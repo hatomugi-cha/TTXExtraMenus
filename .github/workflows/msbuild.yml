@@ -1,0 +1,75 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+name: MSBuild
+
+on:
+  push:
+    tags:
+    - 'v*'
+
+env:
+  # Path to the solution file relative to the root of the project.
+  SOLUTION_FILE_PATH: .
+
+  # Configuration type to build.
+  # You can convert this to a build matrix if you need coverage of multiple configuration types.
+  # https://docs.github.com/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+  BUILD_CONFIGURATION: Release
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1.0.2
+
+    - name: Create out/
+      working-directory: ${{ github.workspace }}
+      run: mkdir ${{ github.workspace }}\out
+
+    - name: Clone Teraterm
+      uses: actions/checkout@v4
+      with:
+        repository: 'TeraTermProject/teraterm'
+        ref: 'v5.3'
+        path: out\teraterm
+
+    - name: Build
+      working-directory: ${{ github.workspace }}
+      # Add additional options to the MSBuild command line here (like platform or verbosity level).
+      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
+      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:Platform="win32" ${{env.SOLUTION_FILE_PATH}}
+
+    - name: Get tag name
+      id: get_tag
+      shell: bash
+      run: echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+
+    - name: Package
+      working-directory: ${{ github.workspace }}
+      run: |
+          dir ${{ github.workspace }}\Release
+          Compress-Archive -Path "LICENSE.txt", "${{ github.workspace }}\Release\TTXExtraMenus.dll" -DestinationPath "TTXExtraMenus-${{env.TAG_NAME}}-x86.zip"
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v7
+      with:
+          name: TTXExtraMenus-${{env.TAG_NAME}}
+          path: "TTXExtraMenus-${{env.TAG_NAME}}-x86.zip"
+          retention-days: 2
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+          name: "TTXExtraMenus ${{env.TAG_NAME}}"
+          tag_name: ${{env.TAG_NAME}}
+          files: "TTXExtraMenus-${{env.TAG_NAME}}-x86.zip"
